@@ -1,0 +1,198 @@
+name: Build and Release KVCache C++ Packages
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以 v 开头的标签时触发
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-20.04
+            arch: amd64
+            platform: linux/amd64
+          - runner: ubuntu-20.04  # GitHub Actions 使用 QEMU 模拟 ARM64
+            arch: arm64
+            platform: linux/arm64
+    
+    runs-on: ${{ matrix.runner }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Set up QEMU (for ARM64 emulation)
+      if: matrix.arch == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+        
+    - name: Create output directory
+      run: |
+        mkdir -p .output
+        
+    - name: Run containerized build
+      run: |
+        # 为不同架构设置不同的基础镜像
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          BASE_IMAGE="arm64v8/ubuntu:20.04"
+        else
+          BASE_IMAGE="ubuntu:20.04"
+        fi
+        
+        echo "Building for architecture: ${{ matrix.arch }}"
+        echo "Using base image: $BASE_IMAGE"
+        
+        # 运行构建脚本
+        python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output
+        
+    - name: Verify build output
+      run: |
+        echo "Build output contents:"
+        ls -la .output/
+        
+        # 检查构建结果
+        if [ -f .output/build_summary.txt ]; then
+          echo "Build summary:"
+          cat .output/build_summary.txt
+        fi
+        
+        if [ -f .output/build_report.json ]; then
+          echo "Build report exists"
+          # 检查构建是否成功
+          if python3 -c "
+import json
+with open('.output/build_report.json', 'r') as f:
+    report = json.load(f)
+failed = [pkg for pkg, result in report.items() if not result.get('success', False)]
+if failed:
+    print(f'Failed packages: {failed}')
+    exit(1)
+else:
+    print('All packages built successfully')
+"; then
+            echo "✅ All packages built successfully"
+          else
+            echo "❌ Some packages failed to build"
+            exit 1
+          fi
+        else
+          echo "❌ Build report not found"
+          exit 1
+        fi
+        
+    - name: Package build artifacts
+      run: |
+        cd .output
+        # 创建 pack_{arch}.tar.gz 包
+        tar -czf ../pack_${{ matrix.arch }}.tar.gz .
+        cd ..
+        
+        # 显示包的大小和内容
+        echo "Package size:"
+        ls -lh pack_${{ matrix.arch }}.tar.gz
+        
+        echo "Package contents:"
+        tar -tzf pack_${{ matrix.arch }}.tar.gz | head -20
+        
+    - name: Generate checksums
+      run: |
+        # 生成 SHA256 校验和
+        sha256sum pack_${{ matrix.arch }}.tar.gz > pack_${{ matrix.arch }}.tar.gz.sha256
+        
+        echo "Checksums:"
+        cat pack_${{ matrix.arch }}.tar.gz.sha256
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kvcache-packages-${{ matrix.arch }}
+        path: |
+          pack_${{ matrix.arch }}.tar.gz
+          pack_${{ matrix.arch }}.tar.gz.sha256
+          .output/build_summary.txt
+          .output/build_report.json
+        retention-days: 30
+        
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: List downloaded artifacts
+      run: |
+        echo "Downloaded artifacts:"
+        find artifacts -type f -name "*.tar.gz" -exec ls -lh {} \;
+        find artifacts -type f -name "*.sha256" -exec cat {} \;
+        
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generateReleaseNotes: true
+        body: |
+          ## KVCache C++ Packages Release ${{ github.ref_name }}
+          
+          This release contains pre-built C++ packages for multiple architectures.
+          
+          ### 📦 Available Packages:
+          - `pack_amd64.tar.gz` - x86_64 packages
+          - `pack_arm64.tar.gz` - ARM64 packages
+          
+          ### 📚 Included Libraries:
+          - etcd-cpp-apiv3 (master branch)
+          - gflags (master branch)
+          - glog (v0.6.0)
+          - jsoncpp (master branch)
+          - rdma-core (master branch)
+          - yalantinglibs (main branch)
+          
+          ### 🚀 Usage:
+          1. Download the appropriate package for your architecture
+          2. Verify integrity: `sha256sum -c pack_{arch}.tar.gz.sha256`
+          3. Extract: `tar -xzf pack_{arch}.tar.gz`
+          4. Add to your CMake project:
+             ```cmake
+             set(CMAKE_PREFIX_PATH "/path/to/extracted" ${CMAKE_PREFIX_PATH})
+             find_package(YourPackage REQUIRED)
+             ```
+          
+          ### 🔧 Build Information:
+          - Built on Ubuntu 20.04
+          - Compiled with GCC 10
+          - C++17/C++20 standard support
+          - Static libraries included
+          
+          ### 🔐 Security:
+          SHA256 checksums are provided for integrity verification.
+        files: |
+          artifacts/kvcache-packages-amd64/pack_amd64.tar.gz
+          artifacts/kvcache-packages-amd64/pack_amd64.tar.gz.sha256
+          artifacts/kvcache-packages-arm64/pack_arm64.tar.gz
+          artifacts/kvcache-packages-arm64/pack_arm64.tar.gz.sha256
+          artifacts/kvcache-packages-amd64/build_summary.txt
+          artifacts/kvcache-packages-amd64/build_report.json
+        token: ${{ secrets.GITHUB_TOKEN }} 
