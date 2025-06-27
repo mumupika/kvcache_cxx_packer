@@ -11,10 +11,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-20.04
+          - runner: ubuntu-22.04
             arch: amd64
             platform: linux/amd64
-          - runner: ubuntu-20.04  # GitHub Actions 使用 QEMU 模拟 ARM64
+          - runner: ubuntu-22.04  # 使用更新的 Ubuntu 版本，Docker 容器仍使用 ubuntu:20.04
             arch: arm64
             platform: linux/arm64
     

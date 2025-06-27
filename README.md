@@ -135,6 +135,14 @@ PACKS = {
 - ✅ **AMD64**: 完全支持
 - ✅ **ARM64**: 通过 QEMU 模拟支持
 
+## 🏗️ GitHub Actions 环境
+
+- **Runner**: Ubuntu 22.04 (GitHub Actions)
+- **Container**: Ubuntu 20.04 (Docker)
+- **多架构支持**: 通过 QEMU 模拟
+
+> 注意：GitHub Actions runner 使用 Ubuntu 22.04，但构建容器仍使用 Ubuntu 20.04 以确保兼容性。
+
 ## 🤝 贡献
 
 1. Fork 这个项目
