@@ -135,8 +135,13 @@ CMD ["python3", "pack.py", "--output-dir", "{self.container_output}"]
         # 创建Dockerfile
         self.create_dockerfile()
 
-        # 构建镜像
-        cmd = f"docker build -t {self.build_image_name} {self.build_dir}"
+        # 构建镜像 - 支持多架构
+        platform_arg = ""
+        if "DOCKER_DEFAULT_PLATFORM" in os.environ:
+            platform_arg = f"--platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
+            print(f"Using platform: {os.environ['DOCKER_DEFAULT_PLATFORM']}")
+
+        cmd = f"docker build {platform_arg} -t {self.build_image_name} {self.build_dir}"
         self.run_command(cmd)
 
         print(f"Docker image {self.build_image_name} built successfully")
@@ -171,8 +176,13 @@ CMD ["python3", "pack.py", "--output-dir", "{self.container_output}"]
         proxy_env = self.get_proxy_env_vars()
         proxy_args = f" {proxy_env}" if proxy_env else ""
 
+        # 添加平台支持
+        platform_arg = ""
+        if "DOCKER_DEFAULT_PLATFORM" in os.environ:
+            platform_arg = f" --platform {os.environ['DOCKER_DEFAULT_PLATFORM']}"
+
         # 运行容器，挂载输出目录，使用--rm自动删除
-        docker_cmd = f"docker run --rm{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_output} --privileged {self.build_image_name}"
+        docker_cmd = f"docker run --rm{platform_arg}{proxy_args} --mount type=bind,source={self.mount_dir},target={self.container_output} --privileged {self.build_image_name}"
 
         print(f"Docker command: {docker_cmd}")
 

@@ -40,15 +40,22 @@ jobs:
         
     - name: Run containerized build
       run: |
-        # 为不同架构设置不同的基础镜像
+        # 为不同架构设置基础镜像（去掉架构前缀，让Docker自动处理）
+        BASE_IMAGE="ubuntu:20.04"
+        
+        # 设置目标平台
         if [ "${{ github.event.inputs.architecture }}" = "arm64" ]; then
-          BASE_IMAGE="arm64v8/ubuntu:20.04"
+          TARGET_PLATFORM="linux/arm64"
         else
-          BASE_IMAGE="ubuntu:20.04"
+          TARGET_PLATFORM="linux/amd64"
         fi
         
         echo "Building for architecture: ${{ github.event.inputs.architecture }}"
         echo "Using base image: $BASE_IMAGE"
+        echo "Target platform: $TARGET_PLATFORM"
+        
+        # 设置 Docker 平台环境变量
+        export DOCKER_DEFAULT_PLATFORM=$TARGET_PLATFORM
         
         # 运行构建脚本
         python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output

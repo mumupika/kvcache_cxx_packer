@@ -44,15 +44,15 @@ jobs:
         
     - name: Run containerized build
       run: |
-        # 为不同架构设置不同的基础镜像
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
-          BASE_IMAGE="arm64v8/ubuntu:20.04"
-        else
-          BASE_IMAGE="ubuntu:20.04"
-        fi
+        # 为不同架构设置基础镜像（去掉架构前缀，让Docker自动处理）
+        BASE_IMAGE="ubuntu:20.04"
         
         echo "Building for architecture: ${{ matrix.arch }}"
         echo "Using base image: $BASE_IMAGE"
+        echo "Target platform: ${{ matrix.platform }}"
+        
+        # 设置 Docker 平台环境变量
+        export DOCKER_DEFAULT_PLATFORM=${{ matrix.platform }}
         
         # 运行构建脚本
         python3 pack_in_container.py --image "$BASE_IMAGE" --mount-dir .output

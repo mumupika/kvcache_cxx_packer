@@ -139,9 +139,9 @@ PACKS = {
 
 - **Runner**: Ubuntu 22.04 (GitHub Actions)
 - **Container**: Ubuntu 20.04 (Docker)
-- **多架构支持**: 通过 QEMU 模拟
+- **多架构支持**: 通过 Docker Buildx 和 QEMU 模拟
 
-> 注意：GitHub Actions runner 使用 Ubuntu 22.04，但构建容器仍使用 Ubuntu 20.04 以确保兼容性。
+> 注意：GitHub Actions runner 使用 Ubuntu 22.04，但构建容器仍使用 Ubuntu 20.04 以确保兼容性。Docker 会自动拉取对应架构的 ubuntu:20.04 镜像。
 
 ## 🤝 贡献
 
