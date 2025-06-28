@@ -10,6 +10,7 @@ import subprocess
 import json
 import shutil
 import logging
+import glob
 from pathlib import Path
 from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -113,6 +114,11 @@ APT = [
     "libcpprest-dev",
     "libnl-3-dev",
     "libnl-route-3-dev",
+]
+DYNAMIC_COPY = [
+    "*grpc*.so*",
+    "*protobuf*.so*",
+    "*unwind*.so*",
 ]
 CPU_COUNT = 4  # os.cpu_count() or 4
 
@@ -494,6 +500,97 @@ class Builder:
             logger.info("Verifying G++ version:")
             os.system(f"{gxx_10_path} --version")
 
+    def copy_dynamic_libraries(self):
+        """复制系统中匹配的动态库文件到输出目录"""
+        logger.info("Copying dynamic libraries to output directory...")
+
+        # 创建输出lib目录
+        output_lib_dir = Path(self.install_prefix) / "lib"
+        output_lib_dir.mkdir(parents=True, exist_ok=True)
+
+        # 系统库目录列表
+        system_lib_dirs = [
+            "/usr/lib",
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/lib64",
+            "/usr/local/lib",
+            "/usr/local/lib64",
+            "/lib",
+            "/lib/x86_64-linux-gnu",
+            "/lib64",
+        ]
+
+        copied_files = []
+        failed_patterns = []
+
+        for pattern in DYNAMIC_COPY:
+            found_files = []
+
+            # 在每个系统目录中搜索匹配的文件
+            for lib_dir in system_lib_dirs:
+                if os.path.exists(lib_dir):
+                    search_pattern = os.path.join(lib_dir, pattern)
+                    matches = glob.glob(search_pattern)
+                    found_files.extend(matches)
+
+            if found_files:
+                logger.info(
+                    f"Found {len(found_files)} files matching pattern '{pattern}'"
+                )
+
+                for src_file in found_files:
+                    try:
+                        src_path = Path(src_file)
+                        dst_path = output_lib_dir / src_path.name
+
+                        # 如果是符号链接，复制链接指向的实际文件
+                        if src_path.is_symlink():
+                            real_src = src_path.resolve()
+                            if real_src.exists():
+                                shutil.copy2(
+                                    real_src, dst_path.with_suffix(real_src.suffix)
+                                )
+                                logger.info(
+                                    f"Copied symlink target: {real_src} -> {dst_path.with_suffix(real_src.suffix)}"
+                                )
+                                copied_files.append(
+                                    str(dst_path.with_suffix(real_src.suffix))
+                                )
+                        else:
+                            shutil.copy2(src_file, dst_path)
+                            logger.info(f"Copied: {src_file} -> {dst_path}")
+                            copied_files.append(str(dst_path))
+
+                    except Exception as e:
+                        logger.warning(f"Failed to copy {src_file}: {e}")
+            else:
+                logger.warning(f"No files found matching pattern '{pattern}'")
+                failed_patterns.append(pattern)
+
+        # 更新动态链接器缓存
+        if copied_files:
+            logger.info(
+                f"Successfully copied {len(copied_files)} dynamic library files"
+            )
+            # 添加输出lib目录到LD_LIBRARY_PATH
+            current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+            new_ld_path = str(output_lib_dir)
+            if current_ld_path:
+                os.environ["LD_LIBRARY_PATH"] = f"{new_ld_path}:{current_ld_path}"
+            else:
+                os.environ["LD_LIBRARY_PATH"] = new_ld_path
+
+            # 更新ldconfig缓存
+            try:
+                self.run_command("ldconfig")
+            except:
+                logger.warning("Failed to update ldconfig cache")
+
+        if failed_patterns:
+            logger.warning(f"Failed to find files for patterns: {failed_patterns}")
+
+        return copied_files
+
     def build_all_packages(self):
         """按依赖顺序构建所有包"""
         logger.info("Starting to build all packages...")
@@ -528,6 +625,15 @@ class Builder:
             if not success:
                 logger.error(f"Failed to build {package_name}, stopping build process")
                 break
+
+        # 复制系统动态库文件到输出目录
+        try:
+            copied_files = self.copy_dynamic_libraries()
+            logger.info(
+                f"Dynamic library copy completed, {len(copied_files)} files copied"
+            )
+        except Exception as e:
+            logger.error(f"Failed to copy dynamic libraries: {e}")
 
         # 最后更新动态链接器缓存
         self.run_command("ldconfig")
