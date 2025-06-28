@@ -76,7 +76,13 @@ PACKS = {
         "branch": "main",
         "c++": 20,
         "dependencies": ["rdma-core"],
-        "define": [],
+        "define": [
+            ["GENERATE_BENCHMARK_DATA", "OFF"],
+            ["BUILD_EXAMPLES", "OFF"],
+            ["BUILD_BENCHMARK", "OFF"],
+            ["BUILD_TESTING", "OFF"],
+            ["COVERAGE_TEST", "OFF"],
+        ],
     },
 }
 APT = [

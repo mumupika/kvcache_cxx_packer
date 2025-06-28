@@ -6,6 +6,11 @@ on:
       - 'v*'  # 当推送以 v 开头的标签时触发
   workflow_dispatch:  # 允许手动触发
 
+# 添加权限设置
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build:
     strategy:
@@ -182,7 +187,7 @@ jobs:
           
           ### 🔐 Security:
           SHA256 checksums are provided for integrity verification.
-        files: |
+        artifacts: |
           artifacts/kvcache-packages-amd64/pack_amd64.tar.gz
           artifacts/kvcache-packages-amd64/pack_amd64.tar.gz.sha256
           artifacts/kvcache-packages-arm64/pack_arm64.tar.gz
