@@ -23,13 +23,13 @@ class ContainerBuilder:
         image="ubuntu:20.04",
         mount_dir="./.output",
         container_workspace="/workspace",
-        container_output="/output",
+        container_output="output",
         build_image_name="kvcache-cxx-builder",
     ):
         self.image = image
         self.mount_dir = Path(mount_dir).resolve()
         self.container_workspace = container_workspace
-        self.container_output = container_output
+        self.container_output = Path(container_output).resolve()
         self.container_name = (
             f"kvcache-builder-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         )
@@ -114,7 +114,7 @@ ENV CPPFLAGS="-I{self.container_output}/include $CPPFLAGS"
 ENV LDFLAGS="-L{self.container_output}/lib -L{self.container_output}/lib64 $LDFLAGS"
 
 # 默认执行构建脚本
-CMD ["python3", "pack.py", "--output-dir", "{self.container_output}"]
+CMD ["python3", "pack.py", "--install-prefix", "{self.container_output}"]
 '''
 
         dockerfile_path = self.build_dir / "Dockerfile"
