@@ -324,10 +324,12 @@ logger = logging.getLogger(__name__)
 
 
 class Builder:
-    def __init__(self, install_prefix="/output", build_dir="build", max_workers=4):
+    def __init__(self, install_prefix="output", build_dir="build", output_logs_dir="output_logs", max_workers=4):
         self.install_prefix = install_prefix
         self.build_dir = Path(build_dir)
         self.build_dir.mkdir(exist_ok=True)
+        self.output_logs_dir = Path(output_logs_dir)
+        self.output_logs_dir.mkdir(exist_ok=True)
         self.max_workers = max_workers
         self.build_results = {}
         self.built_packages = set()  # 跟踪已构建的包
@@ -1058,6 +1060,12 @@ endif()
             shutil.copy("build.log", output_dir / "build.log")
 
         logger.info(f"Build report generated in {output_dir}")
+    
+    def clean(self):
+        # Clean previous old artifacts.
+        shutil.rmtree(self.install_prefix, ignore_errors=True)
+        shutil.rmtree(self.build_dir, ignore_errors=True)
+        shutil.rmtree(self.output_logs_dir, ignore_errors=True)
 
 
 def main():
@@ -1068,11 +1076,11 @@ def main():
         description="Build all packages defined in pack.py"
     )
     parser.add_argument(
-        "--install-prefix", default="/output", help="Installation prefix"
+        "--install-prefix", default="output", help="Installation prefix"
     )
     parser.add_argument("--build-dir", default="build", help="Build directory")
     parser.add_argument(
-        "--output-dir", default="output", help="Output directory for reports"
+        "--output-logs-dir", default="output_logs", help="Output directory for reports"
     )
     parser.add_argument(
         "--max-workers", type=int, default=4, help="Maximum parallel workers"
@@ -1081,14 +1089,21 @@ def main():
     args = parser.parse_args()
 
     try:
+        # Fix broken installs.
+        os.system('apt --fix-broken install')
+        
         builder = Builder(
             install_prefix=args.install_prefix,
             build_dir=args.build_dir,
+            output_logs_dir=args.output_logs_dir,
             max_workers=args.max_workers,
         )
 
+        # clean before build.
+        builder.clean()
+        
         results = builder.build_all_packages()
-        builder.generate_report(Path(args.output_dir))
+        builder.generate_report(Path(args.output_logs_dir))
 
         # 打印摘要
         successful = sum(1 for r in results.values() if r["success"])
@@ -1097,6 +1112,8 @@ def main():
         logger.info(
             f"Build completed: {successful}/{total} packages built successfully"
         )
+        
+        os.system('tar -zcvf output.tar.gz output')
 
         if successful == total:
             sys.exit(0)
